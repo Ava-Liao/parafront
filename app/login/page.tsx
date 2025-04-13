@@ -24,7 +24,8 @@ export default function Login() {
       
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
-        router.push('/dashboard'); // 登录成功后跳转到仪表板
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        router.push('/'); // 登录成功后跳转到主页面
       }
     } catch (err: any) {
       setError(err.response?.data?.error || '登录过程中出现错误');
