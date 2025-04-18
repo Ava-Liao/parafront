@@ -175,37 +175,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* 查询功能卡片 */}
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-              <div className="p-6 text-center">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  酶动力学参数查询
-                </h2>
-                <p className="text-gray-600 mb-6">
-                  {user 
-                    ? "使用我们的系统查询酶动力学参数，包括EC号、蛋白ID和kcat值"
-                    : "登录后可以使用我们的数据库查询酶动力学参数"}
-                </p>
-                {user ? (
-                  <button
-                    onClick={goToQuery}
-                    className="px-6 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
-                  >
-                    进入查询系统
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => router.push('/login')}
-                    className="px-6 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
-                  >
-                    立即登录
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </main>
 
@@ -213,7 +182,7 @@ export default function Home() {
       <footer className="bg-gray-50">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
           <p className="text-center text-sm text-gray-500">
-            © 2024 酶动力学参数预测系统. All rights reserved.
+            © 2025 酶动力学参数预测系统. All rights reserved.
           </p>
         </div>
       </footer>
