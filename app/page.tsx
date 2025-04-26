@@ -59,12 +59,12 @@ export default function Home() {
   const modelInfo: Record<ModelType, ModelInfo> = {
     UniKP: {
       title: 'UniKP 模型',
-      description: '这是一个用于酶动力学参数预测的统一知识预训练模型。该模型通过整合多源数据和先验知识，提供了更准确的参数预测能力。',
+      description: '基于预训练模型和机器学习模型的酶动力学预测框架。该框架仅通过给定酶的氨基酸序列和底物结构信息实现预测酶动力学参数',
       image: '/images/UniKP/UniKP_1.webp',
     },
     DLTKcat: {
       title: 'DLTKcat 模型',
-      description: '这是一个专门用于预测酶促反应Kcat值的深度学习模型。该模型利用先进的深度学习技术,实现了高精度的Kcat预测。',
+      description: '双向注意力CPI深度学习模型,考虑温度对酶动力学参数的影响。该模型的数据集里增加温度值再利用模型提取特征进而预测kcat值。',
       image: '/images/DLTKcat/DLTKcat_1.jpeg',
     },
   };
@@ -90,7 +90,7 @@ export default function Home() {
                     onClick={goToQuery}
                     className="px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-gray-100 rounded-md"
                   >
-                    查询系统
+                    查询和预测系统
                   </button>
                   <button
                     onClick={handleLogout}
@@ -173,6 +173,95 @@ export default function Home() {
                   {modelInfo[currentModel].description}
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* 模型评估 */}
+          <div className="max-w-4xl mx-auto">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                数据分布
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                  <div className="p-4">
+                    <h3 className="text-lg font-semibold mb-2">UniKP 数据分布</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      UniKP模型训练数据的分布情况，展示了kcat值的分布范围和频率。
+                    </p>
+                    <div className="relative h-64 w-full">
+                      <Image 
+                        src="/images/unikpdis.png"
+                        alt="UniKP 数据分布图"
+                        fill
+                        style={{ objectFit: 'contain' }}
+                        priority
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                  <div className="p-4">
+                    <h3 className="text-lg font-semibold mb-2">DLTKcat 数据分布</h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      DLTKcat模型训练数据的分布情况，显示了不同kcat值区间的数据频次。
+                    </p>
+                    <div className="relative h-64 w-full">
+                      <Image 
+                        src="/images/dltkcatdis.png"
+                        alt="DLTKcat 数据分布图"
+                        fill
+                        style={{ objectFit: 'contain' }}
+                        priority
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              模型性能
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-lg font-semibold mb-2">决定系数(R²)比较</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    R²值越接近1，表示模型解释的数据变异性越高，预测性能越好。
+                  </p>
+                  <div className="relative h-64 w-full">
+                    <Image 
+                      src="/images/r2.png"
+                      alt="R² 比较图"
+                      fill
+                      style={{ objectFit: 'contain' }}
+                      priority
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div className="p-4">
+                  <h3 className="text-lg font-semibold mb-2">均方根误差(RMSE)比较</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    RMSE值越低，表示模型预测结果与实际值的偏差越小，预测性能越好。
+                  </p>
+                  <div className="relative h-64 w-full">
+                    <Image 
+                      src="/images/rmse.png"
+                      alt="RMSE 比较图"
+                      fill
+                      style={{ objectFit: 'contain' }}
+                      priority
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 p-4 bg-white rounded-lg shadow-lg">
+              <p className="text-gray-700">
+                从上述图表可以看出，UniKP模型在R²和RMSE指标上均优于DLTKcat模型，表明UniKP模型具有更高的预测精度和更低的预测误差。
+              </p>
             </div>
           </div>
         </div>

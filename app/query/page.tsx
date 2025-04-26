@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import {
+  predictUniKP,
+  predictDLTKcat,
+  PredictionResult, 
+  fetchEnzymeData, 
+  savePredictionToDatabase
+} from './api';
 
 interface User {
   number: number;
@@ -16,19 +22,26 @@ export default function EnzymeQuery() {
   const [loading, setLoading] = useState(true);
   
   // 查询相关状态
-  const [ecNumber, setEcNumber] = useState('');
-  const [protId, setProtId] = useState('');
+  const [smiles, setSmiles] = useState('');
   const [sub, setSub] = useState('');
   const [queryResults, setQueryResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  // 预测相关状态
-  const [smiles,setSmiles] = useState('');
-  const [sequences,setSequences] = useState('');
-  const [subName, setSubName] = useState('');
-  const [predictResults,setPredictResults] = useState<any[]>([]);
-  const [predicting,setPredicting] = useState(false);
-  const [predictError,setPredictError] = useState('');
+  
+  // UniKP模型预测相关状态
+  const [uniSmiles, setUniSmiles] = useState('');
+  const [uniSequences, setUniSequences] = useState('');
+  const [uniPredictResults, setUniPredictResults] = useState<PredictionResult[]>([]);
+  const [uniPredicting, setUniPredicting] = useState(false);
+  const [uniPredictError, setUniPredictError] = useState('');
+  
+  // DLTKcat模型预测相关状态
+  const [dltSmiles, setDltSmiles] = useState('');
+  const [dltSequences, setDltSequences] = useState('');
+  const [dltTemperature, setDltTemperature] = useState(25); // 默认温度为25℃
+  const [dltPredictResults, setDltPredictResults] = useState<PredictionResult[]>([]);
+  const [dltPredicting, setDltPredicting] = useState(false);
+  const [dltPredictError, setDltPredictError] = useState('');
 
   // 检查用户是否已登录
   useEffect(() => {
@@ -56,167 +69,41 @@ export default function EnzymeQuery() {
     router.push('/login');
   };
 
-  // 查询酶数据
-  const searchEnzyme = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!ecNumber && !protId && !sub) {
-      setSearchError('请至少输入一个搜索条件');
-      return;
-    }
-    
-    setSearching(true);
-    setSearchError('');
-    
-    try {
-      // 获取JWT令牌
-      const token = localStorage.getItem('token');
-      
-      const response = await axios.get('http://localhost:8080/api/enzyme/findKcat', {
-        params: {
-          ecNumber: ecNumber || undefined,
-          protId: protId || undefined,
-          sub: sub || undefined
-        },
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('查询响应:', response.data);
-      setQueryResults(response.data.records || []);
-    } catch (error: any) {
-      console.error('查询出错:', error);
-      
-      if (error.response) {
-        console.error('错误状态:', error.response.status);
-        console.error('错误数据:', error.response.data);
-        
-        if (error.response.status === 403) {
-          setSearchError('权限不足，请确认您已登录');
-        } else if (error.response.status === 401) {
-          setSearchError('登录已过期，请重新登录');
-          setTimeout(() => {
-            handleLogout();
-          }, 2000);
-        } else {
-          setSearchError(error.response.data?.error || '查询过程中出现错误');
-        }
-      } else {
-        setSearchError('无法连接到服务器，请检查网络连接');
-      }
-      
-      setQueryResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  
-  // 预测kcat
-  const predictKcat = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!smiles || !sequences || !subName) {
-      setPredictError('底物名称、SMILES结构和氨基酸序列都必须输入');
-      return;
-    }
-
-    setPredicting(true);
-    setPredictError('');
-
-    try {
-      // 构建请求数据 - 改为JSON格式
-      const requestData = {
-        substrate_name: subName,
-        substrate_smiles: smiles,
-        protein_sequence: sequences
-      };
-
-      // 通过Next.js API路由调用预测API - 解决CORS问题
-      const response = await axios.post('http://localhost:3500/predict_kcat', 
-        requestData,
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      console.log('预测响应:', response.data);
-      
-      if (response.data) {
-        // 转换为数组格式以便复用结果显示组件
-        setPredictResults([{
-          sub: subName,
-          smiles: smiles,
-          sequences: sequences,
-          kcat: response.data.kcat_value, // 修正字段名
-          formattedKcat: response.data.kcat_value ? response.data.kcat_value.toFixed(4) : null,
-          predicted: 1
-        }]);
-      } else {
-        setPredictResults([]);
-      }
-    } catch (error: any) {
-      console.error('预测出错:', error);
-
-      if (error.response) {
-        console.error('错误状态:', error.response.status);
-        console.error('错误数据:', error.response.data);
-        setPredictError(error.response.data?.error || '预测过程中出现错误');
-      } else {
-        setPredictError('无法连接到服务器，请检查网络连接');
-      }
-
-      setPredictResults([]);
-    } finally {
-      setPredicting(false);
-    }
-  };
-
-  // 保存预测结果到数据库
-  const savePredictionToDatabase = async (result: any) => {
-    try {
-      // 获取JWT令牌，用于身份验证
-      const token = localStorage.getItem('token');
-      
-      // 构建要保存的酶数据（不再要求EC号和蛋白ID）
-      const enzymeData = {
-        sub: result.sub,
-        smiles: result.smiles,
-        sequences: result.sequences,
-        kcat: result.kcat,
-        predicted: 1 // 标记为预测值
-      };
-      
-      // 发送请求保存到数据库
-      const response = await axios.post('http://localhost:8080/api/enzyme/save', 
-        enzymeData,
-        {
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      if (response.status === 200 || response.status === 201) {
-        alert(`预测结果已成功保存到数据库！ID: ${response.data.id}`);
-      }
-    } catch (error: any) {
-      console.error('保存到数据库失败:', error);
-      alert('保存到数据库失败: ' + (error.response?.data?.error || error.message || '未知错误'));
-    }
-  };
-
   // 处理登出
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     redirectToLogin();
   };
+
+  // 合并两个模型的预测结果用于显示
+  const allPredictResults = [...uniPredictResults, ...dltPredictResults];
+
+  // 处理搜索表达提交
+  const handleSearch = async(e:React.FormEvent) => {
+    e.preventDefault();
+    await fetchEnzymeData(
+      { sub, smiles },
+      setSearching,
+      setSearchError,
+      setQueryResults,
+      redirectToLogin
+    );
+  };
+
+  // 渲染数据来源
+  const renderDataSource = (predicted:number) => {
+    switch(predicted){
+      case 0:
+        return "实验数据";
+      case 1:
+        return "UniKP预测";
+      case 2:
+        return "DLTKcat预测";
+      default:
+        return `其他来源(${predicted})`;
+    }
+  }
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">加载中...</div>;
@@ -257,40 +144,14 @@ export default function EnzymeQuery() {
 
       {/* 主要内容区域 */}
       <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="max-w-5xl mx-auto">
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
             <div className="p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">
                 酶动力学参数查询
               </h2>
-              <form onSubmit={searchEnzyme} className="mb-6">
+              <form onSubmit={handleSearch} className="mb-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label htmlFor="ecNumber" className="block text-sm font-medium text-gray-700 mb-1 text-left">
-                      EC号
-                    </label>
-                    <input
-                      type="text"
-                      id="ecNumber"
-                      value={ecNumber}
-                      onChange={(e) => setEcNumber(e.target.value)}
-                      placeholder="例如: 1.1.1.1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="protId" className="block text-sm font-medium text-gray-700 mb-1 text-left">
-                      蛋白ID
-                    </label>
-                    <input
-                      type="text"
-                      id="protId"
-                      value={protId}
-                      onChange={(e) => setProtId(e.target.value)}
-                      placeholder="例如: P12345"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
                   <div>
                     <label htmlFor="sub" className="block text-sm font-medium text-gray-700 mb-1 text-left">
                       底物名称
@@ -303,6 +164,20 @@ export default function EnzymeQuery() {
                       placeholder="例如: Glucose"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                     />
+                  </div>
+                  <div>
+                    <label htmlFor="smiles" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                      底物结构 (SMILES)
+                    </label>
+                    <input
+                      type="text"
+                      id="smiles"
+                      value={smiles}
+                      onChange={(e) => setSmiles(e.target.value)}
+                      placeholder="例如: C1=CC=C(C(=C1)O)O"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">输入SMILES格式的底物结构进行精确查询</p>
                   </div>
                 </div>
                 
@@ -328,19 +203,16 @@ export default function EnzymeQuery() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          EC号
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          蛋白ID
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           底物名称
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          底物结构
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           kcat值
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          是否为预测值
+                          数据来源
                         </th>
                       </tr>
                     </thead>
@@ -348,19 +220,16 @@ export default function EnzymeQuery() {
                       {queryResults.map((result, index) => (
                         <tr key={index}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {result.ecNumber}
+                            {result.sub||'-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {result.protId}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {result.sub || '-'}
+                            {result.smiles || '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {result.formattedKcat || result.kcat}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {result.predicted || result.predicted}
+                            {renderDataSource(result.predicted)}
                           </td>
                         </tr>
                       ))}
@@ -370,75 +239,160 @@ export default function EnzymeQuery() {
               )}
 
               {queryResults.length === 0 && !searching && !searchError && (
-                <p className="py-3 text-gray-500">请输入查询条件并点击查询按钮</p>
+                 <p className="py-3 text-gray-500">请输入底物名称或底物结构并点击查询按钮</p>
               )}
-              <hr className="my-8 border-t-2 border-dashed border-gray-200" />
+            </div>
+          </div>
 
-              <h2 className=" text-2xl font-bold text-gray-900 mb-4">
-                酶动力学参数预测
-              </h2>
-              <form onSubmit={predictKcat} className="mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label htmlFor="subName" className="block text-sm font-medium text-gray-700 mb-1 text-left">
-                      底物名称
-                    </label>
-                    <input
+          {/* 预测模块 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* UniKP模型预测 */}
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">
+                  UniKP模型预测
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  该模型只需要SMILES结构和氨基酸序列进行预测
+                </p>
+                <form onSubmit={predictUniKP(uniSmiles, uniSequences, setUniPredicting, setUniPredictError, setUniPredictResults)} className="mb-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="uniSmiles" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                        底物结构 (SMILES)
+                      </label>
+                      <input
                         type="text"
-                        id="subName"
-                        value={subName}
-                        onChange={(e) => setSubName(e.target.value)}
-                        placeholder="例如: Catechol"
+                        id="uniSmiles"
+                        value={uniSmiles}
+                        onChange={(e) => setUniSmiles(e.target.value)}
+                        placeholder="例如: C1=CC=C(C(=C1)O)O"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="smiles" className="block text-sm font-medium text-gray-700 mb-1 text-left">
-                      底物结构
-                    </label>
-                    <input
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="uniSequences" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                        氨基酸序列
+                      </label>
+                      <input
                         type="text"
-                        id="smiles"
-                        value={smiles}
-                        onChange={(e) => setSmiles(e.target.value)}
-                        placeholder="输入底物结构"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="sequences" className="block text-sm font-medium text-gray-700 mb-1 text-left">
-                      氨基酸序列
-                    </label>
-                    <input
-                        type="text"
-                        id="sequences"
-                        value={sequences}
-                        onChange={(e) => setSequences(e.target.value)}
+                        id="uniSequences"
+                        value={uniSequences}
+                        onChange={(e) => setUniSequences(e.target.value)}
                         placeholder="输入蛋白质氨基酸序列"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-                {predictError && (
-                    <div className="text-red-500 text-sm mb-4">
-                      {predictError}
+                        required
+                      />
                     </div>
-                )}
+                  </div>
+                  
+                  {uniPredictError && (
+                    <div className="text-red-500 text-sm mt-2 mb-2">
+                      {uniPredictError}
+                    </div>
+                  )}
 
-                <button
-                    type="submit"
-                    disabled={predicting}
-                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:bg-indigo-300"
-                >
-                  {predicting ? '预测中...' : '预测'}
-                </button>
-              </form>
+                  <div className="mt-4">
+                    <button
+                      type="submit"
+                      disabled={uniPredicting}
+                      className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:bg-blue-300"
+                    >
+                      {uniPredicting ? '预测中...' : '使用UniKP模型预测'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
 
-              {/* 预测结果表格 */}
-              {predictResults.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+            {/* DLTKcat模型预测 */}
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-3">
+                  DLTKcat模型预测
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  该模型需要SMILES结构、氨基酸序列和温度参数进行预测
+                </p>
+                <form onSubmit={predictDLTKcat(dltSmiles, dltSequences, dltTemperature, setDltPredicting, setDltPredictError, setDltPredictResults)} className="mb-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="dltSmiles" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                        底物结构 (SMILES)
+                      </label>
+                      <input
+                        type="text"
+                        id="dltSmiles"
+                        value={dltSmiles}
+                        onChange={(e) => setDltSmiles(e.target.value)}
+                        placeholder="例如: CCO"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="dltSequences" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                        氨基酸序列
+                      </label>
+                      <input
+                        type="text"
+                        id="dltSequences"
+                        value={dltSequences}
+                        onChange={(e) => setDltSequences(e.target.value)}
+                        placeholder="输入蛋白质氨基酸序列"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="dltTemperature" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                        温度 (°C)
+                      </label>
+                      <input
+                        type="number"
+                        id="dltTemperature"
+                        value={dltTemperature}
+                        onChange={(e) => setDltTemperature(Number(e.target.value))}
+                        placeholder="例如: 25"
+                        min="0"
+                        max="100"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  {dltPredictError && (
+                    <div className="text-red-500 text-sm mt-2 mb-2">
+                      {dltPredictError}
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <button
+                      type="submit"
+                      disabled={dltPredicting}
+                      className="w-full px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:bg-green-300"
+                    >
+                      {dltPredicting ? '预测中...' : '使用DLTKcat模型预测'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          {/* 预测结果表格 */}
+          {allPredictResults.length > 0 && (
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden mt-8">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">
+                  预测结果
+                </h2>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                       <tr>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           底物名称
@@ -453,56 +407,74 @@ export default function EnzymeQuery() {
                           预测kcat值
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          是否为预测值
+                          温度(°C)
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          预测模型
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          数据来源标记
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           操作
                         </th>
                       </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                      {predictResults.map((result, index) => (
-                          <tr key={index}>
-                            <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs overflow-hidden text-ellipsis">
-                              {result.sub}
-                            </td>
-                            <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs overflow-hidden text-ellipsis">
-                              {result.smiles}
-                            </td>
-                            <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs overflow-hidden text-ellipsis">
-                              {result.sequences}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {result.formattedKcat || result.kcat}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {result.predicted === 1 ? '预测值' : '实验值'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <button
-                                onClick={() => savePredictionToDatabase(result)}
-                                className="px-3 py-1 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md"
-                              >
-                                保存到数据库
-                              </button>
-                            </td>
-                          </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {allPredictResults.map((result, index) => (
+                        <tr key={index}>
+                          <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs overflow-hidden text-ellipsis">
+                            {result.sub}
+                          </td>
+                          <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs overflow-hidden text-ellipsis">
+                            {result.smiles}
+                          </td>
+                          <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 max-w-xs overflow-hidden text-ellipsis">
+                            {result.sequences}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {result.formattedKcat || result.kcat}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {result.temperature || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              result.model === 'UniKP' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                            }`}>
+                              {result.model}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {result.predicted} {/* 显示预测标记值 */}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button
+                              onClick={() => savePredictionToDatabase(result)}
+                              className="px-3 py-1 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md"
+                            >
+                              保存到数据库
+                            </button>
+                          </td>
+                        </tr>
                       ))}
-                      </tbody>
-                    </table>
-                  </div>
-              )}
-
-              {predictResults.length === 0 && !predicting && !predictError && (
-                  <p className="py-3 text-gray-500">请输入底物结构和氨基酸序列并点击预测按钮</p>
-              )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {allPredictResults.length === 0 && !(uniPredicting || dltPredicting) && !(uniPredictError || dltPredictError) && (
+            <div className="bg-white rounded-lg shadow-lg overflow-hidden mt-8 p-6">
+              <p className="py-3 text-gray-500 text-center">请在对应模型下输入参数并点击预测按钮</p>
+            </div>
+          )}
         </div>
       </main>
 
       {/* 页脚 */}
-      <footer className="bg-gray-50">
+      <footer className="bg-gray-50 mt-8">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
           <p className="text-center text-sm text-gray-500">
             © 2025 酶动力学参数预测系统. All rights reserved.
